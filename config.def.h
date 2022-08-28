@@ -1,5 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 
+#include <X11/XF86keysym.h>
+
 /* appearance */
 static const unsigned int borderpx  = 1;        /* border pixel of windows */
 static const unsigned int snap      = 32;       /* snap pixel */
@@ -95,6 +97,11 @@ static const Key keys[] = {
 	TAGKEYS(                        XK_8,                      7)
 	TAGKEYS(                        XK_9,                      8)
 	{ MODKEY|ShiftMask,             XK_q,      quit,           {0} },
+	{ 0,                    XF86XK_AudioMute,  spawn,          SHCMD("pamixer -t") },
+	{ 0,             XF86XK_AudioLowerVolume,  spawn,          SHCMD("pamixer --allow-boost -d 5") },
+	{ 0,             XF86XK_AudioRaiseVolume,  spawn,          SHCMD("pamixer --allow-boost -i 5") },
+	{ 0,              XF86XK_MonBrightnessUp,  spawn,          SHCMD("light -A 15") },
+	{ 0,            XF86XK_MonBrightnessDown,  spawn,          SHCMD("light -U 15") },
 };
 
 /* button definitions */
