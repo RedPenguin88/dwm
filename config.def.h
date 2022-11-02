@@ -140,9 +140,9 @@ static const Key keys[] = {
 	{ 0,                    XF86XK_AudioMute,  spawn,          SHCMD("pamixer -t; pkill -RTMIN+17 dwmblocks") },
 	{ 0,             XF86XK_AudioLowerVolume,  spawn,          SHCMD("pamixer --allow-boost -d 5; pkill -RTMIN+17 dwmblocks") },
 	{ 0,             XF86XK_AudioRaiseVolume,  spawn,          SHCMD("pamixer --allow-boost -i 5; pkill -RTMIN+17 dwmblocks") },
-	{ 0,              XF86XK_MonBrightnessUp,  spawn,          SHCMD("light -A 15") },
-	{ 0,            XF86XK_MonBrightnessDown,  spawn,          SHCMD("light -U 15") },
-	{ 0,                    		XK_Print,  spawn,          SHCMD("screenshot") },
+	{ 0,              XF86XK_MonBrightnessUp,  spawn,          {.v = (const char*[]){ "light", "-A", "15", NULL } } },
+	{ 0,            XF86XK_MonBrightnessDown,  spawn,          {.v = (const char*[]){ "light", "-U", "15", NULL } } },
+	{ 0,                    		XK_Print,  spawn,          {.v = (const char*[]){ "screenshot", NULL } } },
 };
 
 /* button definitions */
