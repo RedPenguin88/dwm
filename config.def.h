@@ -142,8 +142,8 @@ static const Key keys[] = {
 	{ 0,             XF86XK_AudioRaiseVolume,  spawn,          SHCMD("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+; pkill -RTMIN+17 dwmblocks") },
 	{ 0,                            XK_Print,  spawn,          SHCMD("maim -q -d 0.3 ~/Pictures/$(date +'%s').png") },
 	{ MODKEY,                       XK_Print,  spawn,          {.v = (const char*[]){ "screenshot", NULL } } },
-	{ 0,              XF86XK_MonBrightnessUp,  spawn,          {.v = (const char*[]){ "light", "-A", "15", NULL } } },
-	{ 0,            XF86XK_MonBrightnessDown,  spawn,          {.v = (const char*[]){ "light", "-U", "15", NULL } } },
+	{ 0,              XF86XK_MonBrightnessUp,  spawn,          {.v = (const char*[]){ "light", "-A", "10", NULL } } },
+	{ 0,            XF86XK_MonBrightnessDown,  spawn,          {.v = (const char*[]){ "light", "-U", "10", NULL } } },
 };
 
 /* button definitions */
