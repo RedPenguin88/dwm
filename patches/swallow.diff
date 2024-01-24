@@ -1,16 +1,17 @@
-From 0cf9a007511f7dfd7dd94171b172562ebac9b6d5 Mon Sep 17 00:00:00 2001
-From: Tom Schwindl <schwindl@posteo.de>
-Date: Sat, 10 Sep 2022 12:51:09 +0200
-Subject: [PATCH] 6.3 swallow patch
+From 66c7e6fef8a900a03e4ca861fdb11aff1f1af690 Mon Sep 17 00:00:00 2001
+From: Bakkeby <bakkeby@gmail.com>
+Date: Mon, 10 Jan 2022 13:43:13 +0100
+Subject: [PATCH] Alternative swallow patch that replaces clients instead of
+ swapping windows offering better resize hints
 
 ---
  config.def.h |   9 +-
- config.mk    |   3 +-
- dwm.c        | 235 +++++++++++++++++++++++++++++++++++++++++++++++++--
- 3 files changed, 237 insertions(+), 10 deletions(-)
+ config.mk    |   6 +-
+ dwm.c        | 300 +++++++++++++++++++++++++++++++++++++++++++++++----
+ 3 files changed, 288 insertions(+), 27 deletions(-)
 
 diff --git a/config.def.h b/config.def.h
-index 061ad662f82a..0b2b8ffd30d5 100644
+index a2ac963..dba4b83 100644
 --- a/config.def.h
 +++ b/config.def.h
 @@ -3,6 +3,7 @@
@@ -28,33 +29,36 @@ index 061ad662f82a..0b2b8ffd30d5 100644
 -	/* class      instance    title       tags mask     isfloating   monitor */
 -	{ "Gimp",     NULL,       NULL,       0,            1,           -1 },
 -	{ "Firefox",  NULL,       NULL,       1 << 8,       0,           -1 },
-+	/* class     instance  title           tags mask  isfloating  isterminal  noswallow  monitor */
-+	{ "Gimp",    NULL,     NULL,           0,         1,          0,           0,        -1 },
-+	{ "Firefox", NULL,     NULL,           1 << 8,    0,          0,          -1,        -1 },
-+	{ "St",      NULL,     NULL,           0,         0,          1,           0,        -1 },
-+	{ NULL,      NULL,     "Event Tester", 0,         0,          0,           1,        -1 }, /* xev */
++	/* class      instance    title            tags mask  isfloating  isterminal  noswallow  monitor */
++	{ "Gimp",     NULL,       NULL,            0,         1,          0,           0,        -1 },
++	{ "Firefox",  NULL,       NULL,            1 << 8,    0,          0,          -1,        -1 },
++	{ "St",       NULL,       NULL,            0,         0,          1,           0,        -1 },
++	{ NULL,       NULL,       "Event Tester",  0,         0,          0,           1,        -1 }, /* xev */
  };
  
  /* layout(s) */
 diff --git a/config.mk b/config.mk
-index 81c493ef4aff..52d1ebf30bec 100644
+index b6eb7e0..ee5c46e 100644
 --- a/config.mk
 +++ b/config.mk
-@@ -20,10 +20,11 @@ FREETYPEINC = /usr/include/freetype2
+@@ -19,10 +19,14 @@ FREETYPELIBS = -lfontconfig -lXft
+ FREETYPEINC = /usr/include/freetype2
  # OpenBSD (uncomment)
  #FREETYPEINC = ${X11INC}/freetype2
- #MANPREFIX = ${PREFIX}/man
 +#KVMLIB = -lkvm
++
++# This is needed for the swallow patch
++XCBLIBS = -lX11-xcb -lxcb -lxcb-res
  
  # includes and libs
  INCS = -I${X11INC} -I${FREETYPEINC}
 -LIBS = -L${X11LIB} -lX11 ${XINERAMALIBS} ${FREETYPELIBS}
-+LIBS = -L${X11LIB} -lX11 ${XINERAMALIBS} ${FREETYPELIBS} -lX11-xcb -lxcb -lxcb-res ${KVMLIB}
++LIBS = -L${X11LIB} -lX11 ${XINERAMALIBS} ${FREETYPELIBS} ${XCBLIBS} ${KVMLIB}
  
  # flags
  CPPFLAGS = -D_DEFAULT_SOURCE -D_BSD_SOURCE -D_POSIX_C_SOURCE=200809L -DVERSION=\"${VERSION}\" ${XINERAMAFLAGS}
 diff --git a/dwm.c b/dwm.c
-index e5efb6a22806..e68294b6b679 100644
+index a96f33c..8735093 100644
 --- a/dwm.c
 +++ b/dwm.c
 @@ -40,6 +40,12 @@
@@ -70,12 +74,13 @@ index e5efb6a22806..e68294b6b679 100644
  
  #include "drw.h"
  #include "util.h"
-@@ -92,9 +98,11 @@ struct Client {
- 	int basew, baseh, incw, inch, maxw, maxh, minw, minh, hintsvalid;
+@@ -92,9 +98,12 @@ struct Client {
+ 	int basew, baseh, incw, inch, maxw, maxh, minw, minh;
  	int bw, oldbw;
  	unsigned int tags;
 -	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen;
 +	int isfixed, isfloating, isurgent, neverfocus, oldstate, isfullscreen, isterminal, noswallow;
++	int ignorecfgreqpos, ignorecfgreqsize;
 +	pid_t pid;
  	Client *next;
  	Client *snext;
@@ -83,7 +88,7 @@ index e5efb6a22806..e68294b6b679 100644
  	Monitor *mon;
  	Window win;
  };
-@@ -138,6 +146,8 @@ typedef struct {
+@@ -138,6 +147,8 @@ typedef struct {
  	const char *title;
  	unsigned int tags;
  	int isfloating;
@@ -92,10 +97,20 @@ index e5efb6a22806..e68294b6b679 100644
  	int monitor;
  } Rule;
  
-@@ -235,6 +245,12 @@ static int xerrordummy(Display *dpy, XErrorEvent *ee);
+@@ -189,6 +200,7 @@ static void pop(Client *);
+ static void propertynotify(XEvent *e);
+ static void quit(const Arg *arg);
+ static Monitor *recttomon(int x, int y, int w, int h);
++static void replaceclient(Client *old, Client *new);
+ static void resize(Client *c, int x, int y, int w, int h, int interact);
+ static void resizeclient(Client *c, int x, int y, int w, int h);
+ static void resizemouse(const Arg *arg);
+@@ -235,6 +247,14 @@ static int xerrordummy(Display *dpy, XErrorEvent *ee);
  static int xerrorstart(Display *dpy, XErrorEvent *ee);
  static void zoom(const Arg *arg);
  
++static int swallow(Client *p, Client *c);
++static void unswallow(Client *c);
 +static pid_t getparentprocess(pid_t p);
 +static int isdescprocess(pid_t p, pid_t c);
 +static Client *swallowingclient(Window w);
@@ -105,16 +120,15 @@ index e5efb6a22806..e68294b6b679 100644
  /* variables */
  static const char broken[] = "broken";
  static char stext[256];
-@@ -269,6 +285,8 @@ static Drw *drw;
+@@ -268,6 +288,7 @@ static Display *dpy;
+ static Drw *drw;
  static Monitor *mons, *selmon;
  static Window root, wmcheckwin;
- 
 +static xcb_connection_t *xcon;
-+
+ 
  /* configuration, allows nested code to access above variables */
  #include "config.h"
- 
-@@ -298,6 +316,8 @@ applyrules(Client *c)
+@@ -298,6 +319,8 @@ applyrules(Client *c)
  		&& (!r->class || strstr(class, r->class))
  		&& (!r->instance || strstr(instance, r->instance)))
  		{
@@ -123,71 +137,60 @@ index e5efb6a22806..e68294b6b679 100644
  			c->isfloating = r->isfloating;
  			c->tags |= r->tags;
  			for (m = mons; m && m->num != r->monitor; m = m->next);
-@@ -416,6 +436,53 @@ attachstack(Client *c)
- 	c->mon->stack = c;
- }
- 
-+void
-+swallow(Client *p, Client *c)
-+{
+@@ -588,22 +611,29 @@ configurerequest(XEvent *e)
+ 		if (ev->value_mask & CWBorderWidth)
+ 			c->bw = ev->border_width;
+ 		else if (c->isfloating || !selmon->lt[selmon->sellt]->arrange) {
++			if (c->ignorecfgreqpos && c->ignorecfgreqsize)
++				return;
 +
-+	if (c->noswallow || c->isterminal)
-+		return;
-+	if (c->noswallow && !swallowfloating && c->isfloating)
-+		return;
-+
-+	detach(c);
-+	detachstack(c);
-+
-+	setclientstate(c, WithdrawnState);
-+	XUnmapWindow(dpy, p->win);
-+
-+	p->swallowing = c;
-+	c->mon = p->mon;
-+
-+	Window w = p->win;
-+	p->win = c->win;
-+	c->win = w;
-+	updatetitle(p);
-+	XMoveResizeWindow(dpy, p->win, p->x, p->y, p->w, p->h);
-+	arrange(p->mon);
-+	configure(p);
-+	updateclientlist();
-+}
-+
-+void
-+unswallow(Client *c)
-+{
-+	c->win = c->swallowing->win;
-+
-+	free(c->swallowing);
-+	c->swallowing = NULL;
-+
-+	/* unfullscreen the client */
-+	setfullscreen(c, 0);
-+	updatetitle(c);
-+	arrange(c->mon);
-+	XMapWindow(dpy, c->win);
-+	XMoveResizeWindow(dpy, c->win, c->x, c->y, c->w, c->h);
-+	setclientstate(c, NormalState);
-+	focus(NULL);
-+	arrange(c->mon);
-+}
-+
- void
- buttonpress(XEvent *e)
- {
-@@ -656,6 +723,9 @@ destroynotify(XEvent *e)
+ 			m = c->mon;
+-			if (ev->value_mask & CWX) {
+-				c->oldx = c->x;
+-				c->x = m->mx + ev->x;
+-			}
+-			if (ev->value_mask & CWY) {
+-				c->oldy = c->y;
+-				c->y = m->my + ev->y;
+-			}
+-			if (ev->value_mask & CWWidth) {
+-				c->oldw = c->w;
+-				c->w = ev->width;
++			if (!c->ignorecfgreqpos) {
++				if (ev->value_mask & CWX) {
++					c->oldx = c->x;
++					c->x = m->mx + ev->x;
++				}
++				if (ev->value_mask & CWY) {
++					c->oldy = c->y;
++					c->y = m->my + ev->y;
++				}
+ 			}
+-			if (ev->value_mask & CWHeight) {
+-				c->oldh = c->h;
+-				c->h = ev->height;
++			if (!c->ignorecfgreqsize) {
++				if (ev->value_mask & CWWidth) {
++					c->oldw = c->w;
++					c->w = ev->width;
++				}
++				if (ev->value_mask & CWHeight) {
++					c->oldh = c->h;
++					c->h = ev->height;
++				}
+ 			}
+ 			if ((c->x + c->w) > m->mx + m->mw && c->isfloating)
+ 				c->x = m->mx + (m->mw / 2 - WIDTH(c) / 2); /* center in x direction */
+@@ -653,6 +683,8 @@ destroynotify(XEvent *e)
  
  	if ((c = wintoclient(ev->window)))
  		unmanage(c, 1);
-+
 +	else if ((c = swallowingclient(ev->window)))
 +		unmanage(c->swallowing, 1);
  }
  
  void
-@@ -1022,12 +1092,13 @@ killclient(const Arg *arg)
+@@ -1021,12 +1053,14 @@ killclient(const Arg *arg)
  void
  manage(Window w, XWindowAttributes *wa)
  {
@@ -195,6 +198,7 @@ index e5efb6a22806..e68294b6b679 100644
 +	Client *c, *t = NULL, *term = NULL;
  	Window trans = None;
  	XWindowChanges wc;
++	int focusclient = 1;
  
  	c = ecalloc(1, sizeof(Client));
  	c->win = w;
@@ -202,68 +206,160 @@ index e5efb6a22806..e68294b6b679 100644
  	/* geometry */
  	c->x = c->oldx = wa->x;
  	c->y = c->oldy = wa->y;
-@@ -1042,6 +1113,7 @@ manage(Window w, XWindowAttributes *wa)
+@@ -1041,6 +1075,7 @@ manage(Window w, XWindowAttributes *wa)
  	} else {
  		c->mon = selmon;
  		applyrules(c);
 +		term = termforwin(c);
  	}
  
- 	if (c->x + WIDTH(c) > c->mon->wx + c->mon->ww)
-@@ -1076,6 +1148,8 @@ manage(Window w, XWindowAttributes *wa)
- 	c->mon->sel = c;
+ 	if (c->x + WIDTH(c) > c->mon->mx + c->mon->mw)
+@@ -1066,18 +1101,35 @@ manage(Window w, XWindowAttributes *wa)
+ 		c->isfloating = c->oldstate = trans != None || c->isfixed;
+ 	if (c->isfloating)
+ 		XRaiseWindow(dpy, c->win);
+-	attach(c);
+-	attachstack(c);
++
++	/* Do not attach client if it is being swallowed */
++	if (term && swallow(term, c)) {
++		/* Do not let swallowed client steal focus unless the terminal has focus */
++		focusclient = (term == selmon->sel);
++	} else {
++		attach(c);
++
++		if (focusclient || !c->mon->sel || !c->mon->stack)
++			attachstack(c);
++		else {
++			c->snext = c->mon->sel->snext;
++			c->mon->sel->snext = c;
++		}
++	}
++
+ 	XChangeProperty(dpy, root, netatom[NetClientList], XA_WINDOW, 32, PropModeAppend,
+ 		(unsigned char *) &(c->win), 1);
+ 	XMoveResizeWindow(dpy, c->win, c->x + 2 * sw, c->y, c->w, c->h); /* some windows require this */
+ 	setclientstate(c, NormalState);
+-	if (c->mon == selmon)
+-		unfocus(selmon->sel, 0);
+-	c->mon->sel = c;
++	if (focusclient) {
++		if (c->mon == selmon)
++			unfocus(selmon->sel, 0);
++		c->mon->sel = c;
++	}
  	arrange(c->mon);
  	XMapWindow(dpy, c->win);
-+	if (term)
-+		swallow(term, c);
- 	focus(NULL);
+-	focus(NULL);
++	if (focusclient)
++		focus(NULL);
  }
  
-@@ -1763,6 +1837,20 @@ unmanage(Client *c, int destroyed)
+ void
+@@ -1269,6 +1321,46 @@ recttomon(int x, int y, int w, int h)
+ 	return r;
+ }
+ 
++void
++replaceclient(Client *old, Client *new)
++{
++	Client *c = NULL;
++	Monitor *mon = old->mon;
++
++	new->mon = mon;
++	new->tags = old->tags;
++	new->isfloating = old->isfloating;
++
++	new->next = old->next;
++	new->snext = old->snext;
++
++	if (old == mon->clients)
++		mon->clients = new;
++	else {
++		for (c = mon->clients; c && c->next != old; c = c->next);
++		c->next = new;
++	}
++
++	if (old == mon->stack)
++		mon->stack = new;
++	else {
++		for (c = mon->stack; c && c->snext != old; c = c->snext);
++		c->snext = new;
++	}
++
++	old->next = NULL;
++	old->snext = NULL;
++
++	XMoveWindow(dpy, old->win, WIDTH(old) * -2, old->y);
++
++	if (ISVISIBLE(new) && !new->isfullscreen) {
++		if (new->isfloating)
++			resize(new, old->x, old->y, new->w, new->h, 0);
++		else
++			resize(new, old->x, old->y, old->w, old->h, 0);
++	}
++}
++
+ void
+ resize(Client *c, int x, int y, int w, int h, int interact)
+ {
+@@ -1656,6 +1748,31 @@ spawn(const Arg *arg)
+ 	}
+ }
+ 
++int
++swallow(Client *t, Client *c)
++{
++	if (c->noswallow || c->isterminal)
++		return 0;
++	if (!swallowfloating && c->isfloating)
++		return 0;
++
++	if (t->isfullscreen)
++		setfullscreen(c, 1);
++
++	replaceclient(t, c);
++	c->ignorecfgreqpos = 1;
++	c->swallowing = t;
++
++	return 1;
++}
++
++void
++unswallow(Client *c)
++{
++	replaceclient(c, c->swallowing);
++	c->swallowing = NULL;
++}
++
+ void
+ tag(const Arg *arg)
+ {
+@@ -1768,9 +1885,17 @@ unfocus(Client *c, int setfocus)
+ void
+ unmanage(Client *c, int destroyed)
+ {
++	Client *s;
  	Monitor *m = c->mon;
  	XWindowChanges wc;
  
-+	if (c->swallowing) {
++	if (c->swallowing)
 +		unswallow(c);
-+		return;
-+	}
 +
-+	Client *s = swallowingclient(c->win);
-+	if (s) {
-+		free(s->swallowing);
++	s = swallowingclient(c->win);
++	if (s)
 +		s->swallowing = NULL;
-+		arrange(m);
-+		focus(NULL);
-+		return;
-+	}
 +
  	detach(c);
  	detachstack(c);
  	if (!destroyed) {
-@@ -1778,9 +1866,12 @@ unmanage(Client *c, int destroyed)
- 		XUngrabServer(dpy);
- 	}
- 	free(c);
--	focus(NULL);
--	updateclientlist();
--	arrange(m);
-+
-+	if (!s) {
-+		arrange(m);
-+		focus(NULL);
-+		updateclientlist();
-+	}
- }
- 
- void
-@@ -2044,6 +2135,136 @@ view(const Arg *arg)
+@@ -2050,6 +2175,133 @@ view(const Arg *arg)
  	arrange(selmon);
  }
  
 +pid_t
 +winpid(Window w)
 +{
-+
 +	pid_t result = 0;
 +
 +#ifdef __linux__
@@ -292,24 +388,22 @@ index e5efb6a22806..e68294b6b679 100644
 +
 +	if (result == (pid_t)-1)
 +		result = 0;
-+
 +#endif /* __linux__ */
-+
 +#ifdef __OpenBSD__
-+        Atom type;
-+        int format;
-+        unsigned long len, bytes;
-+        unsigned char *prop;
-+        pid_t ret;
++	Atom type;
++	int format;
++	unsigned long len, bytes;
++	unsigned char *prop;
++	pid_t ret;
 +
-+        if (XGetWindowProperty(dpy, w, XInternAtom(dpy, "_NET_WM_PID", 0), 0, 1, False, AnyPropertyType, &type, &format, &len, &bytes, &prop) != Success || !prop)
-+               return 0;
++	if (XGetWindowProperty(dpy, w, XInternAtom(dpy, "_NET_WM_PID", 0), 0, 1, False, AnyPropertyType, &type, &format, &len, &bytes, &prop) != Success || !prop)
++		return 0;
 +
-+        ret = *(pid_t*)prop;
-+        XFree(prop);
-+        result = ret;
-+
++	ret = *(pid_t*)prop;
++	XFree(prop);
++	result = ret;
 +#endif /* __OpenBSD__ */
++
 +	return result;
 +}
 +
@@ -393,7 +487,7 @@ index e5efb6a22806..e68294b6b679 100644
  Client *
  wintoclient(Window w)
  {
-@@ -2133,10 +2354,12 @@ main(int argc, char *argv[])
+@@ -2141,10 +2393,12 @@ main(int argc, char *argv[])
  		fputs("warning: no locale support\n", stderr);
  	if (!(dpy = XOpenDisplay(NULL)))
  		die("dwm: cannot open display");
@@ -408,5 +502,4 @@ index e5efb6a22806..e68294b6b679 100644
  #endif /* __OpenBSD__ */
  	scan();
 -- 
-2.37.2
-
+2.19.1

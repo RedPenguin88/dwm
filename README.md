@@ -4,10 +4,11 @@ This build of dwm has been expanded upon to match my personal, opinionated prefe
 
 # Patches
 
+- [Barmodules](https://github.com/bakkeby/patches/wiki/barmodules): Replaces built-in bar to allow alternate positioning and increases extensibility of the bar
 - [Status2d](https://dwm.suckless.org/patches/status2d/): Allows colors and rectangle drawing in your dwm status bar 
 - [Statuscmd](https://dwm.suckless.org/patches/statuscmd/): Allows the ability to execute shell commands based on the mouse button and position when clicking the status bar (integrated with my build of [dwmblocks](github.com/RedPenguin88/dwmblocks))
-- [Swallow](https://dwm.suckless.org/patches/swallow/): Adds "window swallowing", i.e. running graphical programs from the terminal will "swallow" the terminal window. Upon closing the graphical program, the terminal is restored to the current position.
-- [Vanity Gaps](https://github.com/bakkeby/patches/blob/master/dwm/dwm-vanitygaps-6.3.diff): Adds configurable gaps between windows differentiating between outer, inner, horizontal and vertical gaps.
+- [Swallow](https://github.com/bakkeby/patches/blob/master/dwm/dwm-swallow-6.3.diff): Adds "window swallowing", i.e. running graphical programs from the terminal will "swallow" the terminal window. Upon closing the graphical program, the terminal is restored to the current position.
+- [Vanity Gaps](https://github.com/bakkeby/patches/blob/master/dwm/dwm-vanitygaps-6.4.diff): Adds configurable gaps between windows differentiating between outer, inner, horizontal and vertical gaps.
 
 # Dependencies
 

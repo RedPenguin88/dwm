@@ -1,6 +1,6 @@
-From 3960c9bbf1dc1918ba3bdfe00c4bec2689730b6a Mon Sep 17 00:00:00 2001
+From 0f63d25a93d1fc1566947ee6aaac57b3388e6f7b Mon Sep 17 00:00:00 2001
 From: Bakkeby <bakkeby@gmail.com>
-Date: Mon, 10 Jan 2022 14:02:07 +0100
+Date: Fri, 20 Oct 2023 22:00:15 +0200
 Subject: [PATCH] vanitygaps - adds gaps to layouts
 
 This patch differentiates between inner and outer gaps as well as
@@ -17,7 +17,7 @@ among the available clients.
  create mode 100644 vanitygaps.c
 
 diff --git a/config.def.h b/config.def.h
-index a2ac963..9165001 100644
+index 061ad66..7770c3f 100644
 --- a/config.def.h
 +++ b/config.def.h
 @@ -3,6 +3,11 @@
@@ -60,7 +60,7 @@ index a2ac963..9165001 100644
  };
  
  /* key definitions */
-@@ -72,6 +92,22 @@ static Key keys[] = {
+@@ -71,6 +91,22 @@ static const Key keys[] = {
  	{ MODKEY,                       XK_h,      setmfact,       {.f = -0.05} },
  	{ MODKEY,                       XK_l,      setmfact,       {.f = +0.05} },
  	{ MODKEY,                       XK_Return, zoom,           {0} },
@@ -84,7 +84,7 @@ index a2ac963..9165001 100644
  	{ MODKEY|ShiftMask,             XK_c,      killclient,     {0} },
  	{ MODKEY,                       XK_t,      setlayout,      {.v = &layouts[0]} },
 diff --git a/dwm.c b/dwm.c
-index a96f33c..7a0119d 100644
+index e5efb6a..4d6fdf1 100644
 --- a/dwm.c
 +++ b/dwm.c
 @@ -119,6 +119,10 @@ struct Monitor {
@@ -102,11 +102,11 @@ index a96f33c..7a0119d 100644
  static void spawn(const Arg *arg);
  static void tag(const Arg *arg);
  static void tagmon(const Arg *arg);
--static void tile(Monitor *);
+-static void tile(Monitor *m);
  static void togglebar(const Arg *arg);
  static void togglefloating(const Arg *arg);
  static void toggletag(const Arg *arg);
-@@ -639,6 +642,10 @@ createmon(void)
+@@ -642,6 +645,10 @@ createmon(void)
  	m->nmaster = nmaster;
  	m->showbar = showbar;
  	m->topbar = topbar;
@@ -117,7 +117,7 @@ index a96f33c..7a0119d 100644
  	m->lt[0] = &layouts[0];
  	m->lt[1] = &layouts[1 % LENGTH(layouts)];
  	strncpy(m->ltsymbol, layouts[0].symbol, sizeof m->ltsymbol);
-@@ -1674,34 +1681,6 @@ tagmon(const Arg *arg)
+@@ -1666,34 +1673,6 @@ tagmon(const Arg *arg)
  	sendmon(selmon->sel, dirtomon(arg->i));
  }
  
@@ -970,4 +970,3 @@ index 0000000..640a158
 \ No newline at end of file
 -- 
 2.19.1
-
